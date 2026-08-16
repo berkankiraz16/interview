@@ -1,17 +1,19 @@
 <?php
-#hassas işlemlerde veri kaybına yol açmaması için katı modda kullanıldı - tür dönüşümünün önüne geçmek için strict types tanımladık
+
+// Scalar türlerde beklenmeyen otomatik dönüşümleri azaltmak ve tip hatalarını erken yakalamak için strict mode kullanıyoruz.
 declare(strict_types=1);
 
 namespace Turkpin\InterviewTest\Services;
 
 use RuntimeException;
 
-#sınıfımızı miras almaması ve override yapılmaması için final class olarak tanımladık
+// Bu servis için kalıtıma ihtiyaç olmadığı için sınıfın miras alınmasını engelliyoruz.
 final class TurkpinApiClient
 {
     private const CONNECT_TIMEOUT_SECONDS = 5;
     private const REQUEST_TIMEOUT_SECONDS = 15;
-# name-pass ve url,api gibi bilgilerin sabit kalması için constructor içinde tanımladık
+
+    // API bağlantı bilgileri nesne oluşturulduktan sonra değişmemesi için readonly tutuluyor.
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $username,
@@ -34,11 +36,31 @@ final class TurkpinApiClient
         $response = $this->request(
             'epinOyunListesi'
         );
-    
+
         return $this->parseGameList($response);
     }
 
-#request fonksiyonu ile turkpin api ile gateway oluşturup ilerideki tüm işleri tek merkezden ele alabileceğiz
+    public function getProducts(string $gameCode): array
+    {
+        $gameCode = trim($gameCode);
+
+        if ($gameCode === '') {
+            throw new RuntimeException(
+                'Game code cannot be empty.'
+            );
+        }
+
+        $response = $this->request(
+            'epinUrunleri',
+            [
+                'oyunKodu' => $gameCode,
+            ]
+        );
+
+        return $this->parseProductList($response);
+    }
+
+    // Turkpin API'ye yapılan HTTP isteklerini tek merkezden yönetiyoruz.
     public function request(string $command, array $parameters = []): string
     {
         if (trim($command) === '') {
@@ -83,7 +105,8 @@ final class TurkpinApiClient
 
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
-#dönecek yanıtın xml formatında olması için header ekliyoruz
+
+            // API'ye XML yanıt tercih ettiğimizi bildiriyoruz; gerçek yanıt yine sunucu tarafından belirlenir.
             CURLOPT_HTTPHEADER => [
                 'Accept: application/xml, text/xml',
             ],
@@ -121,58 +144,60 @@ final class TurkpinApiClient
 
         return $response;
     }
-#apinin beklediği etiket yapısını eksiksiz ve güvenili bir şekilde standart hale getiriyoruz
+
+    // API'nin beklediği XML gövdesini tek bir standart noktada oluşturuyoruz.
     private function buildRequestXml(
-    string $command,
-    array $parameters = []
-): string {
-    $escape = static fn (string $value): string =>
-    #htmlspecialchars fonksiyonu ile verileri html etiketlerinden korumak için kullanıyoruz
-        htmlspecialchars(
-            $value,
-            ENT_XML1 | ENT_QUOTES,
-            'UTF-8'
-        );
-
-    $xml = '<APIRequest><params>';
-
-    $xml .= '<cmd>'
-        . $escape($command)
-        . '</cmd>';
-
-    $xml .= '<username>'
-        . $escape($this->username)
-        . '</username>';
-
-    $xml .= '<password>'
-        . $escape($this->password)
-        . '</password>';
-
-    foreach ($parameters as $name => $value) {
-        if (
-            !is_string($name)
-            || !preg_match('/^[A-Za-z_][A-Za-z0-9_-]*$/', $name)
-        ) {
-            throw new RuntimeException(
-                'Invalid Turkpin API parameter name.'
+        string $command,
+        array $parameters = []
+    ): string {
+        // XML için özel karakterleri escape ederek bozuk XML oluşmasını önlüyoruz.
+        $escape = static fn (string $value): string =>
+            htmlspecialchars(
+                $value,
+                ENT_XML1 | ENT_QUOTES,
+                'UTF-8'
             );
+
+        $xml = '<APIRequest><params>';
+
+        $xml .= '<cmd>'
+            . $escape($command)
+            . '</cmd>';
+
+        $xml .= '<username>'
+            . $escape($this->username)
+            . '</username>';
+
+        $xml .= '<password>'
+            . $escape($this->password)
+            . '</password>';
+
+        foreach ($parameters as $name => $value) {
+            // Parametre adının güvenli ve geçerli bir XML etiket adı olmasını kontrol ediyoruz.
+            if (
+                !is_string($name)
+                || !preg_match('/^[A-Za-z_][A-Za-z0-9_-]*$/', $name)
+            ) {
+                throw new RuntimeException(
+                    'Invalid Turkpin API parameter name.'
+                );
+            }
+
+            if (!is_scalar($value)) {
+                throw new RuntimeException(
+                    "Turkpin API parameter '{$name}' must be scalar."
+                );
+            }
+
+            $xml .= '<' . $name . '>'
+                . $escape((string) $value)
+                . '</' . $name . '>';
         }
 
-        if (!is_scalar($value)) {
-            throw new RuntimeException(
-                "Turkpin API parameter '{$name}' must be scalar."
-            );
-        }
+        $xml .= '</params></APIRequest>';
 
-        $xml .= '<' . $name . '>'
-            . $escape((string) $value)
-            . '</' . $name . '>';
+        return $xml;
     }
-
-    $xml .= '</params></APIRequest>';
-
-    return $xml;
-}
 
     private function parseGameList(string $response): array
     {
@@ -201,7 +226,8 @@ final class TurkpinApiClient
             $errorDescription = trim(
                 (string) ($xml->params->error_desc ?? '')
             );
-#yalnızca bağlantının kurulmasını değil, istenilen işlemin başarılı bir şekilde tamamlandığını doğrulamak için kontrol ediyoruz
+
+            // HTTP isteği başarılı olsa bile API işlem kodunun başarılı olduğunu ayrıca doğruluyoruz.
             if ($errorCode !== '000') {
                 throw new RuntimeException(
                     'Turkpin API error'
@@ -246,7 +272,142 @@ final class TurkpinApiClient
         }
     }
 
-#ilgili hatanın nereden kaynaklı oldıuğunu belirlemek için uyarıcı mesajları veriyoruz
+    private function parseProductList(string $response): array
+    {
+        // XML cevabını işleyebilmek için SimpleXML eklentisinin açık olması gerekir.
+        if (!function_exists('simplexml_load_string')) {
+            throw new RuntimeException(
+                'PHP SimpleXML extension is not enabled.'
+            );
+        }
+
+        // XML parse hatalarını ekrana basmak yerine kontrollü şekilde yönetiyoruz.
+        $previousUseInternalErrors =
+            libxml_use_internal_errors(true);
+
+        try {
+            $xml = simplexml_load_string($response);
+
+            if ($xml === false) {
+                throw new RuntimeException(
+                    'Turkpin API returned invalid XML.'
+                );
+            }
+
+            $errorCode = trim(
+                (string) ($xml->params->error ?? '')
+            );
+
+            $errorDescription = trim(
+                (string) ($xml->params->error_desc ?? '')
+            );
+
+            // HTTP 200 tek başına yeterli değildir; Turkpin işlem kodunun da 000 olması gerekir.
+            if ($errorCode !== '000') {
+                throw new RuntimeException(
+                    'Turkpin API error'
+                    . ($errorCode !== ''
+                        ? " ({$errorCode})"
+                        : '')
+                    . ': '
+                    . ($errorDescription !== ''
+                        ? $errorDescription
+                        : 'Unknown error.')
+                );
+            }
+
+            $products = [];
+
+            // Ürün listesi yoksa hata vermek yerine boş liste dönüyoruz.
+            if (!isset($xml->params->epinUrunListesi->urun)) {
+                return $products;
+            }
+
+            foreach (
+                $xml->params->epinUrunListesi->urun
+                as $product
+            ) {
+                $id = trim((string) $product->id);
+                $name = trim((string) $product->name);
+
+                // Kimliği veya adı olmayan eksik ürünleri listeye dahil etmiyoruz.
+                if ($id === '' || $name === '') {
+                    continue;
+                }
+
+                $maxOrderRaw = trim(
+                    (string) $product->max_order
+                );
+
+                $preOrderRaw = strtolower(
+                    trim((string) $product->pre_order)
+                );
+
+                $products[] = [
+                    'id' => $id,
+                    'name' => $name,
+                    'stock' => (int) $product->stock,
+
+                    // Minimum siparişi en az 1 olacak şekilde normalize ediyoruz.
+                    'min_order' => max(
+                        1,
+                        (int) $product->min_order
+                    ),
+
+                    // API'de boş veya 0 max_order üst sınır olmadığı anlamına geliyor.
+                    'max_order' =>
+                        $maxOrderRaw === ''
+                        || $maxOrderRaw === '0'
+                            ? null
+                            : (int) $maxOrderRaw,
+
+                    // Para değerlerinde float hassasiyet sorunundan kaçınmak için fiyatı string tutuyoruz.
+                    'price' => trim(
+                        (string) $product->price
+                    ),
+
+                    'tax_type' => trim(
+                        (string) $product->tax_type
+                    ),
+
+                    // "false" boş olmayan bir string olduğu için doğrudan bool cast yerine açık karşılaştırma yapıyoruz.
+                    'pre_order' =>
+                        $preOrderRaw === 'true'
+                        || $preOrderRaw === '1',
+
+                    // Barem alanları yalnızca baremli ürünlerde gelir değilse yoksa null bırakıyoruz.
+                    'min_barem' =>
+                        isset($product->min_barem)
+                        && trim((string) $product->min_barem) !== ''
+                            ? trim((string) $product->min_barem)
+                            : null,
+
+                    'max_barem' =>
+                        isset($product->max_barem)
+                        && trim((string) $product->max_barem) !== ''
+                            ? trim((string) $product->max_barem)
+                            : null,
+
+                    'barem_step' =>
+                        isset($product->barem_step)
+                        && trim((string) $product->barem_step) !== ''
+                            ? trim((string) $product->barem_step)
+                            : null,
+                ];
+            }
+
+            return $products;
+        } finally {
+            // Parse sırasında biriken libxml hatalarını temizleyip önceki global ayarı geri yüklüyoruz.
+            libxml_clear_errors();
+
+            libxml_use_internal_errors(
+                $previousUseInternalErrors
+            );
+        }
+    }
+
+    // Eksik veya geçersiz ortam ayarlarını API çağrısından önce yakalıyoruz.
     private function validateConfiguration(): void
     {
         if (!filter_var($this->baseUrl, FILTER_VALIDATE_URL)) {
