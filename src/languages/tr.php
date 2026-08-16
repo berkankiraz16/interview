@@ -7,6 +7,7 @@ $lang = [
     'title' => 'Test Proje',
     'all_games' => 'Tüm Oyunlar',
     'prd_name' => 'Ürün Adı',
+    'select_game' => 'Oyun Seçiniz',    
     'stock' => 'Stok',
     'min_order' => 'Min. Sipariş',
     'max_order' => 'Max. Sipariş',

@@ -28,55 +28,64 @@ final class TurkpinApiClient
             self::env('TURKPIN_API_PASSWORD'),
         );
     }
+
+    public function getGames(): array
+    {
+        $response = $this->request(
+            'epinOyunListesi'
+        );
+    
+        return $this->parseGameList($response);
+    }
+
 #request fonksiyonu ile turkpin api ile gateway oluşturup ilerideki tüm işleri tek merkezden ele alabileceğiz
     public function request(string $command, array $parameters = []): string
     {
         if (trim($command) === '') {
-            throw new RuntimeException('Turkpin API command cannot be empty.');
+            throw new RuntimeException(
+                'Turkpin API command cannot be empty.'
+            );
         }
 
         if (!function_exists('curl_init')) {
-            throw new RuntimeException('PHP cURL extension is not enabled.');
+            throw new RuntimeException(
+                'PHP cURL extension is not enabled.'
+            );
         }
+
+        $xml = $this->buildRequestXml(
+            $command,
+            $parameters
+        );
 
         $handle = curl_init($this->baseUrl);
 
         if ($handle === false) {
-            throw new RuntimeException('cURL could not be initialized.');
+            throw new RuntimeException(
+                'cURL could not be initialized.'
+            );
         }
 
-        $payload = array_merge(
-            $parameters,
-            [
-                'username' => $this->username,
-                'password' => $this->password,
-                'cmd' => $command,
-            ]
-        );
-#tuttuğumuz verileri turkpin api nin kolay okuması için standart bir pakete dönüştürüyoruz linkleri
         curl_setopt_array($handle, [
             CURLOPT_POST => true,
 
-            CURLOPT_POSTFIELDS => http_build_query(
-                $payload,
-                '',
-                '&',
-                PHP_QUERY_RFC3986
-            ),
+            CURLOPT_POSTFIELDS => [
+                'DATA' => $xml,
+            ],
 
             CURLOPT_RETURNTRANSFER => true,
 
-            CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT_SECONDS,
+            CURLOPT_CONNECTTIMEOUT =>
+                self::CONNECT_TIMEOUT_SECONDS,
 
-            CURLOPT_TIMEOUT => self::REQUEST_TIMEOUT_SECONDS,
-#bağlanacağımız sunucunun kimliğini doğrulamak için ssl doğrulamasını etkinleştiriyoruz
+            CURLOPT_TIMEOUT =>
+                self::REQUEST_TIMEOUT_SECONDS,
+
             CURLOPT_SSL_VERIFYPEER => true,
-
             CURLOPT_SSL_VERIFYHOST => 2,
-
+#dönecek yanıtın xml formatında olması için header ekliyoruz
             CURLOPT_HTTPHEADER => [
-                'Content-Type: application/x-www-form-urlencoded',
-                'Accept: application/xml, text/xml, application/json',
+                'Accept: application/xml, text/xml',
             ],
         ]);
 
@@ -93,7 +102,8 @@ final class TurkpinApiClient
 
         if ($response === false) {
             throw new RuntimeException(
-                'Turkpin API connection error: ' . $curlError
+                'Turkpin API connection error: '
+                . $curlError
             );
         }
 
@@ -111,6 +121,131 @@ final class TurkpinApiClient
 
         return $response;
     }
+#apinin beklediği etiket yapısını eksiksiz ve güvenili bir şekilde standart hale getiriyoruz
+    private function buildRequestXml(
+    string $command,
+    array $parameters = []
+): string {
+    $escape = static fn (string $value): string =>
+    #htmlspecialchars fonksiyonu ile verileri html etiketlerinden korumak için kullanıyoruz
+        htmlspecialchars(
+            $value,
+            ENT_XML1 | ENT_QUOTES,
+            'UTF-8'
+        );
+
+    $xml = '<APIRequest><params>';
+
+    $xml .= '<cmd>'
+        . $escape($command)
+        . '</cmd>';
+
+    $xml .= '<username>'
+        . $escape($this->username)
+        . '</username>';
+
+    $xml .= '<password>'
+        . $escape($this->password)
+        . '</password>';
+
+    foreach ($parameters as $name => $value) {
+        if (
+            !is_string($name)
+            || !preg_match('/^[A-Za-z_][A-Za-z0-9_-]*$/', $name)
+        ) {
+            throw new RuntimeException(
+                'Invalid Turkpin API parameter name.'
+            );
+        }
+
+        if (!is_scalar($value)) {
+            throw new RuntimeException(
+                "Turkpin API parameter '{$name}' must be scalar."
+            );
+        }
+
+        $xml .= '<' . $name . '>'
+            . $escape((string) $value)
+            . '</' . $name . '>';
+    }
+
+    $xml .= '</params></APIRequest>';
+
+    return $xml;
+}
+
+    private function parseGameList(string $response): array
+    {
+        if (!function_exists('simplexml_load_string')) {
+            throw new RuntimeException(
+                'PHP SimpleXML extension is not enabled.'
+            );
+        }
+
+        $previousUseInternalErrors =
+            libxml_use_internal_errors(true);
+
+        try {
+            $xml = simplexml_load_string($response);
+
+            if ($xml === false) {
+                throw new RuntimeException(
+                    'Turkpin API returned invalid XML.'
+                );
+            }
+
+            $errorCode = trim(
+                (string) ($xml->params->error ?? '')
+            );
+
+            $errorDescription = trim(
+                (string) ($xml->params->error_desc ?? '')
+            );
+#yalnızca bağlantının kurulmasını değil, istenilen işlemin başarılı bir şekilde tamamlandığını doğrulamak için kontrol ediyoruz
+            if ($errorCode !== '000') {
+                throw new RuntimeException(
+                    'Turkpin API error'
+                    . ($errorCode !== ''
+                        ? " ({$errorCode})"
+                        : '')
+                    . ': '
+                    . ($errorDescription !== ''
+                        ? $errorDescription
+                        : 'Unknown error.')
+                );
+            }
+
+            $games = [];
+
+            if (isset($xml->params->oyunListesi->oyun)) {
+                foreach (
+                    $xml->params->oyunListesi->oyun
+                    as $game
+                ) {
+                    $id = trim((string) $game->id);
+                    $name = trim((string) $game->name);
+
+                    if ($id === '' || $name === '') {
+                        continue;
+                    }
+
+                    $games[] = [
+                        'id' => $id,
+                        'name' => $name,
+                    ];
+                }
+            }
+
+            return $games;
+        } finally {
+            libxml_clear_errors();
+
+            libxml_use_internal_errors(
+                $previousUseInternalErrors
+            );
+        }
+    }
+
 #ilgili hatanın nereden kaynaklı oldıuğunu belirlemek için uyarıcı mesajları veriyoruz
     private function validateConfiguration(): void
     {

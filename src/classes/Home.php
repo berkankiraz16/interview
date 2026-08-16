@@ -1,46 +1,29 @@
 <?php
 
+use RuntimeException;
+use Turkpin\InterviewTest\Services\TurkpinApiClient;
+
 class Home
 {
     public function index()
     {
         global $smarty;
+#veri setlerini tanımlıyoruz, bunları api bağlantısıntan önce tanımlıyoruz ki hataları, oyunları ve ürünleri gösterebilsin
+        $games = [];
+        $products = [];
+        $error = null;
 
-        $games = [
-            1 => 'Game 1',
-            2 => 'Game 2',
-            3 => 'Game 3',
-        ];
+        try {
+            $apiClient = TurkpinApiClient::fromEnvironment();
 
-        $products = [
-            [
-                'id' => 1,
-                'name' => 'Product 1',
-                'stock' => 10,
-                'min_order' => 1,
-                'max_order' => 5,
-                'price' => 100
-            ],
-            [
-                'id' => 2,
-                'name' => 'Product 2',
-                'stock' => 20,
-                'min_order' => 1,
-                'max_order' => 5,
-                'price' => 200
-            ],
-            [
-                'id' => 3,
-                'name' => 'Product 3',
-                'stock' => 30,
-                'min_order' => 1,
-                'max_order' => 5,
-                'price' => 300
-            ],
-        ];
+            $games = $apiClient->getGames();
+        } catch (RuntimeException $exception) {
+            $error = $exception->getMessage();
+        }
 
         $smarty->assign('games', $games);
         $smarty->assign('products', $products);
+        $smarty->assign('error', $error);
 
         $smarty->assign('template', 'home.html');
     }

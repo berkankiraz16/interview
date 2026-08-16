@@ -1,15 +1,35 @@
-<div class="row">
+<div class="row mb-3">
     <div class="col-auto">
-        <select class="form-select" id="games" onchange="this.form.submit()">
-            <option value="0" {if $game == 0}selected{/if}>{$LANG.all_games}</option>
-            {foreach $games as $game_id => $game_name}
-                <option value="{$game_id}" {if $game == $game_id}selected{/if}>{$game_name}</option>
-            {/foreach}
-        </select>
-    </div>
+        <form method="get" action="/">
+            <label for="games" class="form-label">
+                {$LANG.select_game}
+            </label>
+        
 
+            <!-- seçilen oyun id bilgisini backend e submit leyen kısım -->
+            <select
+                class="form-select"
+                id="games"
+                name="game"
+                onchange="this.form.submit()"
+            >
+                <option value="">
+                    {$LANG.select_game}
+                </option>
+
+                {foreach $games as $game}
+                    <option value="{$game.id}">
+                        {$game.name}
+                    </option>
+                {/foreach}
+            </select>
+        </form>
+    </div>
 </div>
 
+<!-- oyun seçilmediğinde ürün listesini göstermemek içn tabloyu ürün sayısının
+  büyük olduğu durumlarda göstermek üzere şarta bağğlıyoruz -->
+{if $products|@count > 0}
 <div class="table">
     <table class="table table-striped table-hover">
         <thead>
@@ -36,3 +56,4 @@
     </table>
     <button type="button" class="btn btn-primary" onclick="addProducts()">{$LANG.buy}</button>
 </div>
+{/if}
