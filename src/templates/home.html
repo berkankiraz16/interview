@@ -36,15 +36,19 @@
 
 <!-- oyun seçilmediğinde ürün listesini göstermemek içn tabloyu ürün sayısının
   büyük olduğu durumlarda göstermek üzere şarta bağğlıyoruz -->
-{if $products|@count > 0}
+  {if $products|@count > 0}
   <div class="table-responsive">
-      <table class="table table-striped table-hover">
+      <table class="table table-striped table-hover align-middle">
           <thead>
               <tr>
                   <th>{$LANG.prd_name}</th>
                   <th>{$LANG.stock}</th>
+                  <th>{$LANG.min_order}</th>
+                  <th>{$LANG.max_order}</th>
                   <th>{$LANG.price}</th>
                   <th>{$LANG.quantity}</th>
+                  <th>{$LANG.barem}</th>
+                  <th></th>
               </tr>
           </thead>
 
@@ -53,10 +57,34 @@
                   <tr>
                       <td>
                           {$product.name|escape:'html'}
+
+                          {if $product.pre_order}
+                              <span class="badge text-bg-info ms-1">
+                                  {$LANG.pre_order}
+                              </span>
+                          {/if}
+
+                          {if !$product.pre_order && $product.stock <= 0}
+                              <span class="badge text-bg-danger ms-1">
+                                  {$LANG.out_of_stock}
+                              </span>
+                          {/if}
                       </td>
 
                       <td>
                           {$product.stock}
+                      </td>
+
+                      <td>
+                          {$product.min_order}
+                      </td>
+
+                      <td>
+                          {if $product.max_order === null}
+                              {$LANG.unlimited}
+                          {else}
+                              {$product.max_order}
+                          {/if}
                       </td>
 
                       <td>
@@ -65,20 +93,216 @@
 
                       <td>
                           <input
-                              name="quantity"
+                              form="order_form_{$product@iteration}"
                               type="number"
+                              name="quantity"
                               class="form-control"
                               value="{$product.min_order}"
                               min="{$product.min_order}"
-                              {if $product.max_order}
+                              {if $product.max_order !== null}
                                   max="{$product.max_order}"
                               {/if}
-                              id="quantity_{$product.id|escape:'html'}"
+                              {if !$product.pre_order && $product.stock <= 0}
+                                  disabled
+                              {/if}
+                              required
                           >
+                      </td>
+
+                      <td>
+                          {if
+                              $product.min_barem !== null
+                              && $product.max_barem !== null
+                              && $product.barem_step !== null
+                          }
+                              <input
+                                  form="order_form_{$product@iteration}"
+                                  type="number"
+                                  name="barem"
+                                  class="form-control"
+                                  value="{$product.min_barem|escape:'html'}"
+                                  min="{$product.min_barem|escape:'html'}"
+                                  max="{$product.max_barem|escape:'html'}"
+                                  step="{$product.barem_step|escape:'html'}"
+                                  required
+                              >
+                          {else}
+                              -
+                          {/if}
+                      </td>
+
+                      <td>
+                          <form
+                              id="order_form_{$product@iteration}"
+                              method="post"
+                              action="/order"
+                          >
+                              <input
+                                  type="hidden"
+                                  name="game_code"
+                                  value="{$selectedGame|escape:'html'}"
+                              >
+
+                              <input
+                                  type="hidden"
+                                  name="product_code"
+                                  value="{$product.id|escape:'html'}"
+                              >
+
+                              <input
+                                  type="hidden"
+                                  name="order_token"
+                                  value="{$orderToken|escape:'html'}"
+                              >
+
+                              <button
+                                  type="submit"
+                                  class="btn btn-primary"
+                                  {if !$product.pre_order && $product.stock <= 0}
+                                      disabled
+                                  {/if}
+                              >
+                                  {$LANG.buy}
+                              </button>
+                          </form>
                       </td>
                   </tr>
               {/foreach}
           </tbody>
       </table>
   </div>
+{/if}
+
+{if $orderFlash}
+    <div
+        class="modal fade"
+        id="orderResultModal"
+        tabindex="-1"
+        aria-labelledby="orderResultModalLabel"
+        aria-hidden="true"
+    >
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+
+                <div
+                    class="modal-header
+                    {if $orderFlash.success}
+                        bg-success text-white
+                    {else}
+                        bg-danger text-white
+                    {/if}"
+                >
+                    <h5
+                        class="modal-title"
+                        id="orderResultModalLabel"
+                    >
+                        {if $orderFlash.success}
+                            {$LANG.order_success}
+                        {else}
+                            {$LANG.order_failed}
+                        {/if}
+                    </h5>
+
+                    <button
+                        type="button"
+                        class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"
+                        aria-label="Close"
+                    ></button>
+                </div>
+
+                <div class="modal-body">
+                    <p class="mb-0">
+                        {$orderFlash.message|escape:'html'}
+                    </p>
+
+                    {if isset($orderFlash.order_number)}
+                        <hr>
+
+                        <dl class="row mb-0">
+                            <dt class="col-sm-5">
+                                {$LANG.order_number}
+                            </dt>
+
+                            <dd class="col-sm-7">
+                                {$orderFlash.order_number|escape:'html'}
+                            </dd>
+
+                            {if isset($orderFlash.amount)}
+                                <dt class="col-sm-5">
+                                    {$LANG.order_amount}
+                                </dt>
+
+                                <dd class="col-sm-7">
+                                    {$orderFlash.amount|escape:'html'}
+                                </dd>
+                            {/if}
+                        </dl>
+                    {/if}
+
+                    {if
+                        isset($orderFlash.epins)
+                        && $orderFlash.epins|@count > 0
+                    }
+                        <hr>
+
+                        <h6>
+                            {$LANG.epin_codes}
+                        </h6>
+
+                        <div class="list-group">
+                            {foreach $orderFlash.epins as $epin}
+                                <div class="list-group-item">
+                                    <div class="fw-semibold">
+                                        {$epin.code|escape:'html'}
+                                    </div>
+
+                                    {if $epin.description != ''}
+                                        <small class="text-muted">
+                                            {$epin.description|escape:'html'}
+                                        </small>
+                                    {/if}
+                                </div>
+                            {/foreach}
+                        </div>
+                    {/if}
+                </div>
+
+                <div class="modal-footer">
+                    <button
+                        type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal"
+                    >
+                        {$LANG.close}
+                    </button>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener(
+            'DOMContentLoaded',
+            function () {
+                const modalElement =
+                    document.getElementById(
+                        'orderResultModal'
+                    );
+
+                if (
+                    modalElement
+                    && typeof bootstrap !== 'undefined'
+                ) {
+                    const orderResultModal =
+                        new bootstrap.Modal(
+                            modalElement
+                        );
+
+                    orderResultModal.show();
+                }
+            }
+        );
+    </script>
 {/if}
