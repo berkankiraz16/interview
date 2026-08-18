@@ -8,18 +8,26 @@ namespace Turkpin\InterviewTest\Services;
 use RuntimeException;
 
 // Bu servis için kalıtıma ihtiyaç olmadığı için sınıfın miras alınmasını engelliyoruz.
+/**
+ * @phpstan-import-type GameData from TurkpinResponseParser
+ * @phpstan-import-type ProductData from TurkpinResponseParser
+ * @phpstan-import-type OrderResult from TurkpinResponseParser
+ */
 final class TurkpinApiClient
 {
     private const CONNECT_TIMEOUT_SECONDS = 5;
     private const REQUEST_TIMEOUT_SECONDS = 15;
 
+    private readonly TurkpinResponseParser $responseParser;
     // API bağlantı bilgileri nesne oluşturulduktan sonra değişmemesi için readonly tutuluyor.
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $username,
         private readonly string $password,
         private readonly bool $orderSubmissionEnabled = false,
+        ?TurkpinResponseParser $responseParser = null,
     ) {
+        $this->responseParser = $responseParser ?? new TurkpinResponseParser();
         $this->validateConfiguration();
     }
 
@@ -36,20 +44,26 @@ final class TurkpinApiClient
         );
     }
 
+    /**
+     * @return list<GameData>
+     */
     public function getGames(): array
     {
         $response = $this->request(
             'epinOyunListesi'
         );
 
-        return $this->parseGameList($response);
+        return $this->responseParser->parseGameList($response);
     }
 
     public function isOrderSubmissionEnabled(): bool
     {
-    return $this->orderSubmissionEnabled;
+        return $this->orderSubmissionEnabled;
     }
 
+    /**
+     * @return list<ProductData>
+     */
     public function getProducts(string $gameCode): array
     {
         $gameCode = trim($gameCode);
@@ -67,83 +81,88 @@ final class TurkpinApiClient
             ]
         );
 
-        return $this->parseProductList($response);
+        return $this->responseParser->parseProductList($response);
     }
 
+    /**
+     * @return OrderResult
+     */
     public function createOrder(
-    string $gameCode,
-    string $productCode,
-    int $quantity,
-    ?string $character = null,
-    bool $preOrder = false,
-    ?string $barem = null
-): array {
-    if (!$this->orderSubmissionEnabled) {
-        throw new RuntimeException(
-            'Turkpin order submission is disabled by configuration.'
+        string $gameCode,
+        string $productCode,
+        int $quantity,
+        ?string $character = null,
+        bool $preOrder = false,
+        ?string $barem = null
+    ): array {
+        if (!$this->orderSubmissionEnabled) {
+            throw new RuntimeException(
+                'Turkpin order submission is disabled by configuration.'
+            );
+        }
+        $gameCode = trim($gameCode);
+        $productCode = trim($productCode);
+        $character = $character !== null
+            ? trim($character)
+            : null;
+        $barem = $barem !== null
+            ? trim($barem)
+            : null;
+
+        // API katmanında da temel doğrulama yapıyoruz.
+        // Asıl iş kuralları daha sonra server-side validator tarafından kontrol edilecek.
+        if ($gameCode === '') {
+            throw new RuntimeException(
+                'Game code cannot be empty.'
+            );
+        }
+
+        if ($productCode === '') {
+            throw new RuntimeException(
+                'Product code cannot be empty.'
+            );
+        }
+
+        if ($quantity < 1) {
+            throw new RuntimeException(
+                'Order quantity must be at least 1.'
+            );
+        }
+
+        $parameters = [
+            'oyunKodu' => $gameCode,
+            'urunKodu' => $productCode,
+            'adet' => $quantity,
+        ];
+
+        // character dokümana göre opsiyonel olduğu belirtildi.
+        if ($character !== null && $character !== '') {
+            $parameters['character'] = $character;
+        }
+
+        // Pre-order bilgisini kullanıcıdan değil
+        // doğrulanmış ürün bilgisinden belirleyeceğiz.
+        if ($preOrder) {
+            $parameters['pre_order'] = 'true';
+        }
+
+        // Barem yalnızca baremli ürünlerde gönderilecek.
+        if ($barem !== null && $barem !== '') {
+            $parameters['barem'] = $barem;
+        }
+
+        $response = $this->request(
+            'epinSiparisYarat',
+            $parameters
         );
-    }
-    $gameCode = trim($gameCode);
-    $productCode = trim($productCode);
-    $character = $character !== null
-        ? trim($character)
-        : null;
-    $barem = $barem !== null
-        ? trim($barem)
-        : null;
 
-    // API katmanında da temel doğrulama yapıyoruz.
-    // Asıl iş kuralları daha sonra server-side validator tarafından kontrol edilecek.
-    if ($gameCode === '') {
-        throw new RuntimeException(
-            'Game code cannot be empty.'
-        );
+        return $this->responseParser->parseOrderResponse($response);
     }
 
-    if ($productCode === '') {
-        throw new RuntimeException(
-            'Product code cannot be empty.'
-        );
-    }
-
-    if ($quantity < 1) {
-        throw new RuntimeException(
-            'Order quantity must be at least 1.'
-        );
-    }
-
-    $parameters = [
-        'oyunKodu' => $gameCode,
-        'urunKodu' => $productCode,
-        'adet' => $quantity,
-    ];
-
-    // character dokümana göre opsiyonel olduğu belirtildi.
-    if ($character !== null && $character !== '') {
-        $parameters['character'] = $character;
-    }
-
-    // Pre-order bilgisini kullanıcıdan değil
-    // doğrulanmış ürün bilgisinden belirleyeceğiz.
-    if ($preOrder) {
-        $parameters['pre_order'] = 'true';
-    }
-
-    // Barem yalnızca baremli ürünlerde gönderilecek.
-    if ($barem !== null && $barem !== '') {
-        $parameters['barem'] = $barem;
-    }
-
-    $response = $this->request(
-        'epinSiparisYarat',
-        $parameters
-    );
-
-    return $this->parseOrderResponse($response);
-}
-
-    // Turkpin API'ye yapılan HTTP isteklerini tek merkezden yönetiyoruz.
-    public function request(string $command, array $parameters = []): string
+    /**
+     * @param array<array-key, mixed> $parameters
+     */
+    private function request(string $command, array $parameters = []): string
     {
         if (trim($command) === '') {
             throw new RuntimeException(
@@ -178,7 +197,7 @@ final class TurkpinApiClient
             ],
 
             CURLOPT_RETURNTRANSFER => true,
-
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
             CURLOPT_CONNECTTIMEOUT =>
                 self::CONNECT_TIMEOUT_SECONDS,
 
@@ -203,12 +222,16 @@ final class TurkpinApiClient
             CURLINFO_HTTP_CODE
         );
 
-        curl_close($handle);
-
         if ($response === false) {
             throw new RuntimeException(
                 'Turkpin API connection error: '
                 . $curlError
+            );
+        }
+
+        if (!is_string($response)) {
+            throw new RuntimeException(
+                'Turkpin API returned an unexpected response type.'
             );
         }
 
@@ -227,7 +250,9 @@ final class TurkpinApiClient
         return $response;
     }
 
-    // API'nin beklediği XML gövdesini tek bir standart noktada oluşturuyoruz.
+    /**
+     * @param array<array-key, mixed> $parameters
+     */
     private function buildRequestXml(
         string $command,
         array $parameters = []
@@ -281,332 +306,6 @@ final class TurkpinApiClient
         return $xml;
     }
 
-    private function parseGameList(string $response): array
-    {
-        if (!function_exists('simplexml_load_string')) {
-            throw new RuntimeException(
-                'PHP SimpleXML extension is not enabled.'
-            );
-        }
-
-        $previousUseInternalErrors =
-            libxml_use_internal_errors(true);
-
-        try {
-            $xml = simplexml_load_string($response);
-
-            if ($xml === false) {
-                throw new RuntimeException(
-                    'Turkpin API returned invalid XML.'
-                );
-            }
-
-            $errorCode = trim(
-                (string) ($xml->params->error ?? '')
-            );
-
-            $errorDescription = trim(
-                (string) ($xml->params->error_desc ?? '')
-            );
-
-            // HTTP isteği başarılı olsa bile API işlem kodunun başarılı olduğunu ayrıca doğruluyoruz.
-            if ($errorCode !== '000') {
-                throw new RuntimeException(
-                    'Turkpin API error'
-                    . ($errorCode !== ''
-                        ? " ({$errorCode})"
-                        : '')
-                    . ': '
-                    . ($errorDescription !== ''
-                        ? $errorDescription
-                        : 'Unknown error.')
-                );
-            }
-
-            $games = [];
-
-            if (isset($xml->params->oyunListesi->oyun)) {
-                foreach (
-                    $xml->params->oyunListesi->oyun
-                    as $game
-                ) {
-                    $id = trim((string) $game->id);
-                    $name = trim((string) $game->name);
-
-                    if ($id === '' || $name === '') {
-                        continue;
-                    }
-
-                    $games[] = [
-                        'id' => $id,
-                        'name' => $name,
-                    ];
-                }
-            }
-
-            return $games;
-        } finally {
-            libxml_clear_errors();
-
-            libxml_use_internal_errors(
-                $previousUseInternalErrors
-            );
-        }
-    }
-
-    private function parseProductList(string $response): array
-    {
-        // XML cevabını işleyebilmek için SimpleXML eklentisinin açık olması gerekir.
-        if (!function_exists('simplexml_load_string')) {
-            throw new RuntimeException(
-                'PHP SimpleXML extension is not enabled.'
-            );
-        }
-
-        // XML parse hatalarını ekrana basmak yerine kontrollü şekilde yönetiyoruz.
-        $previousUseInternalErrors =
-            libxml_use_internal_errors(true);
-
-        try {
-            $xml = simplexml_load_string($response);
-
-            if ($xml === false) {
-                throw new RuntimeException(
-                    'Turkpin API returned invalid XML.'
-                );
-            }
-
-            $errorCode = trim(
-                (string) ($xml->params->error ?? '')
-            );
-
-            $errorDescription = trim(
-                (string) ($xml->params->error_desc ?? '')
-            );
-
-            // HTTP 200 tek başına yeterli değildir; Turkpin işlem kodunun da 000 olması gerekir.
-            if ($errorCode !== '000') {
-                throw new RuntimeException(
-                    'Turkpin API error'
-                    . ($errorCode !== ''
-                        ? " ({$errorCode})"
-                        : '')
-                    . ': '
-                    . ($errorDescription !== ''
-                        ? $errorDescription
-                        : 'Unknown error.')
-                );
-            }
-
-            $products = [];
-
-            // Ürün listesi yoksa hata vermek yerine boş liste dönüyoruz.
-            if (!isset($xml->params->epinUrunListesi->urun)) {
-                return $products;
-            }
-
-            foreach (
-                $xml->params->epinUrunListesi->urun
-                as $product
-            ) {
-                $id = trim((string) $product->id);
-                $name = trim((string) $product->name);
-
-                // Kimliği veya adı olmayan eksik ürünleri listeye dahil etmiyoruz.
-                if ($id === '' || $name === '') {
-                    continue;
-                }
-
-                $maxOrderRaw = trim(
-                    (string) $product->max_order
-                );
-
-                $preOrderRaw = strtolower(
-                    trim((string) $product->pre_order)
-                );
-
-                $products[] = [
-                    'id' => $id,
-                    'name' => $name,
-                    'stock' => (int) $product->stock,
-
-                    // Minimum siparişi en az 1 olacak şekilde normalize ediyoruz.
-                    'min_order' => max(
-                        1,
-                        (int) $product->min_order
-                    ),
-
-                    // API'de boş veya 0 max_order üst sınır olmadığı anlamına geliyor.
-                    'max_order' =>
-                        $maxOrderRaw === ''
-                        || $maxOrderRaw === '0'
-                            ? null
-                            : (int) $maxOrderRaw,
-
-                    // Para değerlerinde float hassasiyet sorunundan kaçınmak için fiyatı string tutuyoruz.
-                    'price' => trim(
-                        (string) $product->price
-                    ),
-
-                    'tax_type' => trim(
-                        (string) $product->tax_type
-                    ),
-
-                    // "false" boş olmayan bir string olduğu için doğrudan bool cast yerine açık karşılaştırma yapıyoruz.
-                    'pre_order' =>
-                        $preOrderRaw === 'true'
-                        || $preOrderRaw === '1',
-
-                    // Barem alanları yalnızca baremli ürünlerde gelir değilse yoksa null bırakıyoruz.
-                    'min_barem' =>
-                        isset($product->min_barem)
-                        && trim((string) $product->min_barem) !== ''
-                            ? trim((string) $product->min_barem)
-                            : null,
-
-                    'max_barem' =>
-                        isset($product->max_barem)
-                        && trim((string) $product->max_barem) !== ''
-                            ? trim((string) $product->max_barem)
-                            : null,
-
-                    'barem_step' =>
-                        isset($product->barem_step)
-                        && trim((string) $product->barem_step) !== ''
-                            ? trim((string) $product->barem_step)
-                            : null,
-                ];
-            }
-
-            return $products;
-        } finally {
-            // Parse sırasında biriken libxml hatalarını temizleyip önceki global ayarı geri yüklüyoruz.
-            libxml_clear_errors();
-
-            libxml_use_internal_errors(
-                $previousUseInternalErrors
-            );
-        }
-    }
-
-    private function parseOrderResponse(string $response): array
-{
-    if (!function_exists('simplexml_load_string')) {
-        throw new RuntimeException(
-            'PHP SimpleXML extension is not enabled.'
-        );
-    }
-
-    $previousUseInternalErrors =
-        libxml_use_internal_errors(true);
-
-    try {
-        $xml = simplexml_load_string($response);
-
-        if ($xml === false) {
-            throw new RuntimeException(
-                'Turkpin API returned invalid order XML.'
-            );
-        }
-
-        /*
-         * Sipariş endpoint'i liste endpointlerinden farklı olarak
-         * error/error_desc yerine HATA_NO/HATA_ACIKLAMA kullanıyor.
-         */
-        $errorCode = trim(
-            (string) ($xml->params->HATA_NO ?? '')
-        );
-
-        $errorDescription = trim(
-            (string) ($xml->params->HATA_ACIKLAMA ?? '')
-        );
-
-        /*
-        * API seviyesinde hata olmasa dahi (000), siparişin kesinleştiğini teyit etmek için
-        * 'siparisSonuc' alanını büyük-küçük harf duyarsız olarak kontrol ediyoruz.
-        * Sadece 'Success' dışındaki tüm durumlarda (Pending, Failed vb.) hata fırlatılır.
-        */ 
-       if ($errorCode !== '000') {
-            throw new RuntimeException(
-                'Turkpin order error'
-                . ($errorCode !== ''
-                    ? " ({$errorCode})"
-                    : '')
-                . ': '
-                . ($errorDescription !== ''
-                    ? $errorDescription
-                    : 'Unknown error.')
-            );
-        }
-
-        $status = trim(
-            (string) ($xml->params->siparisSonuc ?? '')
-        );
-
-        /*
-         * HATA_NO=000 olsa bile siparisSonuc alanını ayrıca kontrol ediyoruz.
-         * Dokümandaki başarılı response değeri "Success".
-         */
-        if (strcasecmp($status, 'Success') !== 0) {
-            throw new RuntimeException(
-                'Turkpin order was not successful'
-                . ($status !== ''
-                    ? ": {$status}"
-                    : '.')
-            );
-        }
-
-        $epins = [];
-
-        /*
-         * adet > 1 olabileceği için tek bir e-pin varsaymıyoruz.
-         * Response'taki epin_list içindeki tüm kodları topluyoruz.
-         */
-        if (isset($xml->params->epin_list->epin)) {
-            foreach (
-                $xml->params->epin_list->epin
-                as $epin
-            ) {
-                $epins[] = [
-                    'id' => trim(
-                        (string) ($epin->id ?? '')
-                    ),
-
-                    'code' => trim(
-                        (string) ($epin->code ?? '')
-                    ),
-
-                    'description' => trim(
-                        (string) ($epin->desc ?? '')
-                    ),
-                ];
-            }
-        }
-
-        return [
-            // Sipariş numarası matematiksel sayı değil, identifier olduğu için string tutuluyor.
-            'order_number' => trim(
-                (string) ($xml->params->siparisNo ?? '')
-            ),
-
-            'status' => $status,
-
-            // Para değerini float'a çevirmeyip decimal string olarak saklıyoruz.
-            'amount' => trim(
-                (string) ($xml->params->siparisTutari ?? '')
-            ),
-
-            'epins' => $epins,
-        ];
-    } finally {
-        libxml_clear_errors();
-
-        libxml_use_internal_errors(
-            $previousUseInternalErrors
-        );
-    }
-}
-
     // Eksik veya geçersiz ortam ayarlarını API çağrısından önce yakalıyoruz.
     private function validateConfiguration(): void
     {
@@ -616,13 +315,26 @@ final class TurkpinApiClient
             );
         }
 
-        if ($this->username === '') {
+        $scheme = strtolower(
+            (string) parse_url(
+                $this->baseUrl,
+                PHP_URL_SCHEME
+            )
+        );
+
+        if ($scheme !== 'https') {
+            throw new RuntimeException(
+                'TURKPIN_API_URL must use HTTPS.'
+            );
+        }
+
+        if (trim($this->username) === '') {
             throw new RuntimeException(
                 'TURKPIN_API_USERNAME is missing.'
             );
         }
 
-        if ($this->password === '') {
+        if (trim($this->password) === '') {
             throw new RuntimeException(
                 'TURKPIN_API_PASSWORD is missing.'
             );
@@ -641,21 +353,21 @@ final class TurkpinApiClient
     }
 
     private static function envBoolean(
-    string $key,
-    bool $default = false
-): bool {
-    $value = self::env($key);
+        string $key,
+        bool $default = false
+    ): bool {
+        $value = self::env($key);
 
-    if ($value === '') {
-        return $default;
+        if ($value === '') {
+            return $default;
+        }
+
+        $parsedValue = filter_var(
+            $value,
+            FILTER_VALIDATE_BOOLEAN,
+            FILTER_NULL_ON_FAILURE
+        );
+
+        return $parsedValue ?? $default;
     }
-
-    $parsedValue = filter_var(
-        $value,
-        FILTER_VALIDATE_BOOLEAN,
-        FILTER_NULL_ON_FAILURE
-    );
-
-    return $parsedValue ?? $default;
-}
 }
