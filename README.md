@@ -82,6 +82,110 @@ Test API'sine erişebilmek için API isteklerini göndereceğiniz internet bağl
 
 Whitelist işlemi tamamlandıktan sonra test API'sini kullanabilirsiniz.
 
+## Uygulama ve Geliştirme Notları
+
+Bu repository'de Turkpin Bayi API entegrasyonu mevcut proje yapısı korunarak geliştirilmiştir.
+
+### Ortam Değişkenleri
+
+Proje kök dizinindeki `.env.example` dosyasını `.env` olarak kopyalayın:
+
+```bash
+cp .env.example .env
+```
+
+Windows PowerShell için:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Ardından Turkpin API bilgilerini `.env` dosyasına ekleyin:
+
+```env
+TURKPIN_API_URL=https://www.turkpin.net/api.php
+TURKPIN_API_USERNAME=
+TURKPIN_API_PASSWORD=
+TURKPIN_ORDER_ENABLED=false
+```
+
+`TURKPIN_ORDER_ENABLED` varsayılan olarak `false` değerindedir. Bu sayede geliştirme ve test sırasında yanlışlıkla gerçek sipariş oluşturulması engellenir.
+
+### Test ve Kod Kontrolleri
+
+Projede unit testler, statik analiz ve kod formatlama kontrolleri bulunmaktadır.
+
+```bash
+composer test
+composer analyse
+composer format-check
+```
+
+Gerçek Turkpin API'sine bağlanan integration testleri varsayılan test akışında çalışmaz. Gerekli ortam değişkenleri tanımlandıktan sonra ayrıca çalıştırılabilir.
+
+### Docker ile Çalıştırma
+
+Proje PHP 8.1 ortamında çalışacak şekilde Docker desteğine sahiptir.
+
+Docker image oluşturmak için:
+
+```bash
+docker build -t turkpin-interview:php81 .
+```
+
+Uygulamayı `.env` dosyasındaki ortam değişkenleriyle çalıştırmak için:
+
+```bash
+docker run --rm -p 8080:8080 --env-file .env turkpin-interview:php81
+```
+
+Uygulamaya tarayıcı üzerinden aşağıdaki adresten erişilebilir:
+
+```text
+http://localhost:8080
+```
+
+Docker ortamı aynı zamanda projenin minimum PHP sürümü olan PHP 8.1 üzerinde test, statik analiz ve kod formatı kontrollerini çalıştırmak için kullanılabilir:
+
+```bash
+docker run --rm turkpin-interview:php81 composer test
+docker run --rm turkpin-interview:php81 composer analyse
+docker run --rm turkpin-interview:php81 composer format-check
+```
+
+Gerçek Turkpin API'sine bağlanan integration testleri normal test akışından ayrı tutulmuştur. API erişimi ve IP whitelist işlemi tamamlandıktan sonra aşağıdaki şekilde çalıştırılabilir:
+
+```bash
+docker run --rm \
+  --env-file .env \
+  -e TURKPIN_RUN_INTEGRATION_TESTS=true \
+  turkpin-interview:php81 \
+  vendor/bin/phpunit tests/Integration/TurkpinApiClientIntegrationTest.php
+```
+
+Integration testleri katalog verilerini okumaya yöneliktir ve canlı sipariş oluşturmaz.
+
+### Teknik Kararlar ve Kullanılan Araçlar
+
+API istekleri ile API cevaplarının işlenmesi ayrı sorumluluklarda tutulmuştur. `TurkpinApiClient` HTTP iletişimini gerçekleştirirken, `TurkpinResponseParser` API'den dönen XML cevaplarının doğrulanması ve uygulamanın kullanacağı veri yapısına dönüştürülmesinden sorumludur.
+
+Sipariş sırasında tarayıcıdan gönderilen ürün bilgilerine doğrudan güvenilmez. Seçilen oyun ve ürün bilgileri sipariş oluşturulmadan önce API üzerinden tekrar alınır ve miktar, stok, ön sipariş ve barem kuralları backend tarafında doğrulanır.
+
+Aynı formun yanlışlıkla tekrar gönderilmesini azaltmak için tek kullanımlık sipariş tokeni ve POST/Redirect/GET akışı kullanılmıştır. Frontend tarafında sipariş butonlarının form gönderiminden sonra devre dışı bırakılması ek bir kullanıcı deneyimi önlemidir; asıl kontrol backend tarafındadır.
+
+Sipariş oluşturma isteğinde otomatik retry uygulanmamıştır. İstek Turkpin tarafında işlenmiş ancak cevap alınamamışsa aynı isteğin otomatik tekrar gönderilmesi ikinci bir sipariş oluşturma riski taşıyabilir.
+
+API ve ağ kaynaklı teknik hatalar kullanıcıya doğrudan gösterilmez. Teknik detaylar Monolog ile loglanırken kullanıcıya Türkçe veya İngilizce genel hata mesajı gösterilir.
+
+XML cevapları işlenirken harici ağ erişimini engellemek amacıyla `LIBXML_NONET` kullanılmıştır.
+
+Projede ek olarak aşağıdaki araçlar kullanılmaktadır:
+
+* **PHPUnit:** Sipariş doğrulama, token yönetimi, API istemcisi ve response parser için unit testler; ayrıca isteğe bağlı gerçek API integration testleri.
+* **PHPStan:** Statik analiz için Level 10 seviyesinde kullanılır.
+* **PHP-CS-Fixer:** PSR-12 kod formatı kontrolü için kullanılır.
+* **Monolog:** API ve uygulama seviyesindeki teknik hataların loglanması için kullanılır.
+
 ## API Bilgileri
 
 * **API URL:** `https://www.turkpin.net/api.php`
