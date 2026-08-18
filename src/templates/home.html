@@ -5,7 +5,7 @@
                 {$LANG.select_game}
             </label>
 
-            <!-- seçilen oyun id bilgisini backend' e submit' leyen kısım -->
+            <!-- Seçilen oyun ID'sini backend'e gönderen alan. -->
             <select
                 class="form-select"
                 id="games"
@@ -24,8 +24,7 @@
                         value="{$game.id|escape:'html'}"
                         {if $selectedGame == $game.id}selected{/if}
                     >
-                        <!-- Dış API'den gelen veriyi güvenli şekilde render
-                        etmek ve olası XSS açıklarını önlemek için HTML escape uygulanır -->
+                        <!-- Dış API'den gelen oyun adı XSS riskine karşı HTML escape edilerek gösterilir. -->
                         {$game.name|escape:'html'}
                     </option>
                 {/foreach}
@@ -34,8 +33,7 @@
     </div>
 </div>
 
-<!-- oyun seçilmediğinde ürün listesini göstermemek içn tabloyu ürün sayısının
-  büyük olduğu durumlarda göstermek üzere şarta bağğlıyoruz -->
+<!-- Oyun seçilmediğinde ürün tablosunu göstermemek için tablo yalnızca ürün bulunduğunda render edilir. -->
   {if $products|@count > 0}
   <div class="table-responsive">
       <table class="table table-striped table-hover align-middle">
