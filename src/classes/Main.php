@@ -1,10 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 require_once __DIR__ . '/Home.php';
 
 class Main
 {
-    public $router;
+    public \Bramus\Router\Router $router;
 
     public function __construct()
     {
@@ -63,11 +65,30 @@ class Main
             new \Bramus\Router\Router();
 
         $smarty->setTemplateDir(
-            'src/templates'
+            __DIR__ . '/../templates'
         );
 
+        $smartyCompileDir =
+            sys_get_temp_dir()
+            . DIRECTORY_SEPARATOR
+            . 'turkpin-smarty';
+
+        if (
+            !is_dir($smartyCompileDir)
+            && !mkdir(
+                $smartyCompileDir,
+                0775,
+                true
+            )
+            && !is_dir($smartyCompileDir)
+        ) {
+            throw new RuntimeException(
+                'Unable to create Smarty compile directory.'
+            );
+        }
+
         $smarty->setCompileDir(
-            '/tmp'
+            $smartyCompileDir
         );
 
         $smarty->assign(
@@ -84,8 +105,9 @@ class Main
         );
     }
 
-    public function run()
+    public function run(): void
     {
+        /** @var \Smarty\Smarty $smarty */
         global $smarty;
 
         /*
