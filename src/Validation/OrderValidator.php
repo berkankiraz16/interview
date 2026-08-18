@@ -6,8 +6,22 @@ namespace Turkpin\InterviewTest\Validation;
 
 use Turkpin\InterviewTest\Exceptions\OrderValidationException;
 
+/**
+ * @phpstan-type OrderProductData array{
+ *     stock?: int,
+ *     min_order?: int,
+ *     max_order?: int|null,
+ *     pre_order?: bool,
+ *     min_barem?: string|null,
+ *     max_barem?: string|null,
+ *     barem_step?: string|null
+ * }
+ */
 final class OrderValidator
 {
+    /**
+    * @param OrderProductData $product
+    */
     public function validate(
         array $product,
         int $quantity,
@@ -56,7 +70,7 @@ final class OrderValidator
          */
         if (!$preOrder && $quantity > $stock) {
             throw new OrderValidationException(
-            'order_stock_exceeded'            
+                'order_stock_exceeded'
             );
         }
 
@@ -65,7 +79,9 @@ final class OrderValidator
             $barem
         );
     }
-
+    /**
+     * @param OrderProductData $product
+     */
     private function validateBarem(
         array $product,
         ?string $barem
@@ -90,7 +106,7 @@ final class OrderValidator
          */
         if ($hasAnyBaremData && !$isTieredProduct) {
             throw new OrderValidationException(
-            'order_barem_data_incomplete'            
+                'order_barem_data_incomplete'
             );
         }
 
@@ -98,7 +114,7 @@ final class OrderValidator
         if (!$isTieredProduct) {
             if ($barem !== null && trim($barem) !== '') {
                 throw new OrderValidationException(
-                'order_barem_not_supported'                
+                    'order_barem_not_supported'
                 );
             }
 
@@ -134,8 +150,7 @@ final class OrderValidator
         string $baremStep
     ): void {
         foreach (
-            [$minBarem, $maxBarem, $baremStep]
-            as $value
+            [$minBarem, $maxBarem, $baremStep] as $value
         ) {
             if (!$this->isValidDecimal($value)) {
                 throw new OrderValidationException(
@@ -265,7 +280,7 @@ final class OrderValidator
             /*
              * İstenen hassasiyetin üzerinde yalnızca sıfır varsa
                sayı aynı değeri ifade etmeye devam eder.*/
-             
+
             if (trim($extraDigits, '0') !== '') {
                 throw new OrderValidationException(
                     'order_decimal_precision_invalid'

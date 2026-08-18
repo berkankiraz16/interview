@@ -8,10 +8,13 @@ use RuntimeException;
 
 /*
  * Kullanıcıdan gelen sipariş verilerinin iş kurallarına
-  uymadığı durumları API/bağlantı hatalarından ayırmak için kullanılır.*/
- 
+ * uymadığı durumları API/bağlantı hatalarından ayırmak için kullanılır.
+ */
 final class OrderValidationException extends RuntimeException
 {
+    /**
+     * @param array<string, int|string> $parameters
+     */
     public function __construct(
         private readonly string $translationKey,
         private readonly array $parameters = []
@@ -24,6 +27,9 @@ final class OrderValidationException extends RuntimeException
         return $this->translationKey;
     }
 
+    /**
+     * @return array<string, int|string>
+     */
     public function getParameters(): array
     {
         return $this->parameters;

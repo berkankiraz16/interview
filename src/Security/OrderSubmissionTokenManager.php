@@ -26,7 +26,11 @@ final class OrderSubmissionTokenManager
             random_bytes(32)
         );
 
-        $_SESSION[self::SESSION_KEY][$token] = time();
+        $tokens = $this->readTokens();
+
+        $tokens[$token] = time();
+
+        $_SESSION[self::SESSION_KEY] = $tokens;
 
         $this->limitActiveTokens();
 
@@ -49,12 +53,9 @@ final class OrderSubmissionTokenManager
 
         $this->purgeExpiredTokens();
 
-        $tokens = $_SESSION[self::SESSION_KEY] ?? [];
+        $tokens = $this->readTokens();
 
-        if (
-            !is_array($tokens)
-            || !isset($tokens[$token])
-        ) {
+        if (!isset($tokens[$token])) {
             return false;
         }
 
@@ -62,30 +63,21 @@ final class OrderSubmissionTokenManager
          * Token başarılı biçimde kullanıldığı anda siliyoruz.
          * Aynı form ikinci kez gönderilirse artık geçersiz olacaktır.
          */
-        unset(
-            $_SESSION[self::SESSION_KEY][$token]
-        );
+        unset($tokens[$token]);
+
+        $_SESSION[self::SESSION_KEY] = $tokens;
 
         return true;
     }
 
     private function purgeExpiredTokens(): void
     {
-        $tokens = $_SESSION[self::SESSION_KEY] ?? [];
-
-        if (!is_array($tokens)) {
-            $_SESSION[self::SESSION_KEY] = [];
-
-            return;
-        }
+        $tokens = $this->readTokens();
 
         $cutoff = time() - self::TOKEN_TTL_SECONDS;
 
         foreach ($tokens as $token => $createdAt) {
-            if (
-                !is_int($createdAt)
-                || $createdAt < $cutoff
-            ) {
+            if ($createdAt < $cutoff) {
                 unset($tokens[$token]);
             }
         }
@@ -95,12 +87,10 @@ final class OrderSubmissionTokenManager
 
     private function limitActiveTokens(): void
     {
-        $tokens = $_SESSION[self::SESSION_KEY] ?? [];
+        $tokens = $this->readTokens();
 
         if (
-            !is_array($tokens)
-            || count($tokens) <= self::MAX_ACTIVE_TOKENS
-        ) {
+            count($tokens) <= self::MAX_ACTIVE_TOKENS) {
             return;
         }
 
@@ -119,13 +109,39 @@ final class OrderSubmissionTokenManager
                 $tokens
             );
 
-            if ($oldestToken === null) {
-                break;
-            }
-
             unset($tokens[$oldestToken]);
         }
 
         $_SESSION[self::SESSION_KEY] = $tokens;
+    }
+    /**
+     * Session içindeki ham veriyi güvenli ve tiplenmiş
+     * token store yapısına dönüştürür.
+     *
+     * @return array<string, int>
+     */
+    private function readTokens(): array
+    {
+        $storedTokens =
+            $_SESSION[self::SESSION_KEY] ?? [];
+
+        if (!is_array($storedTokens)) {
+            return [];
+        }
+
+        $tokens = [];
+
+        foreach ($storedTokens as $token => $createdAt) {
+            if (
+                !is_string($token)
+                || !is_int($createdAt)
+            ) {
+                continue;
+            }
+
+            $tokens[$token] = $createdAt;
+        }
+
+        return $tokens;
     }
 }
