@@ -1,0 +1,11 @@
+.env
+.git
+.gitignore
+
+vendor/
+var/log/
+
+.idea/
+.vscode/
+
+.php-cs-fixer.cache
