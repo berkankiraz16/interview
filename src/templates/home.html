@@ -99,10 +99,19 @@
                               class="form-control"
                               value="{$product.min_order}"
                               min="{$product.min_order}"
-                              {if $product.max_order !== null}
+                              {if !$product.pre_order}
+                                {if
+                                  $product.max_order !== null
+                                  && $product.max_order < $product.stock
+                                }
                                   max="{$product.max_order}"
+                                {else}
+                                  max="{$product.stock}"
+                                {/if}
+                               {elseif $product.max_order !== null}
+                                    max="{$product.max_order}"
                               {/if}
-                              {if !$product.pre_order && $product.stock <= 0}
+                              {if !$product.pre_order && $product.stock < $product.min_order}
                                   disabled
                               {/if}
                               required
@@ -133,6 +142,7 @@
 
                       <td>
                           <form
+                              class="order-form"
                               id="order_form_{$product@iteration}"
                               method="post"
                               action="/order"
@@ -157,8 +167,8 @@
 
                               <button
                                   type="submit"
-                                  class="btn btn-primary"
-                                  {if !$product.pre_order && $product.stock <= 0}
+                                  class="btn btn-primary order-submit-button"
+                                  {if !$product.pre_order && $product.stock < $product.min_order}
                                       disabled
                                   {/if}
                               >
@@ -207,7 +217,7 @@
                         type="button"
                         class="btn-close btn-close-white"
                         data-bs-dismiss="modal"
-                        aria-label="Close"
+                        aria-label="{$LANG.close|escape:'html'}"
                     ></button>
                 </div>
 
@@ -306,3 +316,18 @@
         );
     </script>
 {/if}
+
+<!-- Form gönderildiğinde sipariş butonlarını devre dışı bırakarak art arda gönderimi azaltır. -->
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.order-form').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                document
+                    .querySelectorAll('.order-submit-button')
+                    .forEach(function (button) {
+                        button.disabled = true;
+                    });
+            });
+        });
+    });
+</script>

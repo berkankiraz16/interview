@@ -43,4 +43,5 @@ $lang = [
     'order_barem_range' => 'Barem must be between {min} and {max}.',
     'order_barem_step' => 'Barem must increase by {step}.',
     'order_decimal_precision_invalid' => 'Barem value has unsupported precision.',
+    'service_unavailable' => 'The service is currently unavailable. Please try again later.',
 ];

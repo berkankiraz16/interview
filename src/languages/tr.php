@@ -7,7 +7,7 @@ $lang = [
     'title' => 'Test Proje',
     'all_games' => 'Tüm Oyunlar',
     'prd_name' => 'Ürün Adı',
-    'select_game' => 'Oyun Seçiniz',    
+    'select_game' => 'Oyun Seçiniz',
     'stock' => 'Stok',
     'min_order' => 'Min. Sipariş',
     'max_order' => 'Max. Sipariş',
@@ -43,4 +43,5 @@ $lang = [
     'order_barem_range' => 'Barem değeri {min} ile {max} arasında olmalıdır.',
     'order_barem_step' => 'Barem değeri {step} artışlarına uygun olmalıdır.',
     'order_decimal_precision_invalid' => 'Barem değeri desteklenmeyen bir hassasiyete sahiptir.',
+    'service_unavailable' => 'Servise şu anda ulaşılamıyor. Lütfen daha sonra tekrar deneyin.',
 ];

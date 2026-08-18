@@ -6,12 +6,17 @@ use Turkpin\InterviewTest\Exceptions\OrderValidationException;
 use Turkpin\InterviewTest\Security\OrderSubmissionTokenManager;
 use Turkpin\InterviewTest\Services\TurkpinApiClient;
 use Turkpin\InterviewTest\Validation\OrderValidator;
+use Turkpin\InterviewTest\Logging\LoggerFactory;
 
 class Home
 {
     public function index(): void
     {
-        global $smarty;
+        /**
+         * @var \Smarty\Smarty $smarty
+         * @var array<string, string> $lang
+         */
+        global $smarty, $lang;
 
         $games = [];
         $products = [];
@@ -71,8 +76,8 @@ class Home
                         true
                     )
                 ) {
-                    throw new RuntimeException(
-                        'Invalid game selection.'
+                    throw new OrderValidationException(
+                        'invalid_game_selection'
                     );
                 }
 
@@ -84,15 +89,26 @@ class Home
                     $selectedGame
                 );
             }
+        } catch (OrderValidationException $exception) {
+            $error = $this->translate(
+                $lang,
+                $exception->getTranslationKey(),
+                $exception->getParameters()
+            );
         } catch (RuntimeException $exception) {
             /*
-             * Geliştirme aşamasında teknik hata mesajını gösteriyoruz.
-             *
-             * Final aşamasında:
-             * - teknik detay log'a yazılacak
-             * - kullanıcıya anlaşılır genel mesaj gösterilecek
+             * Teknik hata detaylarını logluyoruz.
+             * Kullanıcıya yalnızca anlaşılır ve genel bir hata mesajı gösteriyoruz.
              */
-            $error = $exception->getMessage();
+            LoggerFactory::create()->error(
+                'Failed to load Turkpin catalog.',
+                [
+                    'exception_class' => $exception::class,
+                    'message' => $exception->getMessage(),
+                ]
+            );
+
+            $error = $lang['service_unavailable'];
         }
 
         $smarty->assign(
@@ -133,10 +149,11 @@ class Home
 
     public function order(): void
     {
+        /** @var array<string, string> $lang */
         global $lang;
 
         /*
-         * Bu method yalnızca POST route üzerinden çalışmalıdır.
+         * Bu method yalnızca POST route üzerinden çalışmaktadır.
          */
         if (
             ($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST'
@@ -271,11 +288,7 @@ class Home
             $selectedProduct = null;
 
             foreach ($products as $product) {
-                if (
-                    isset($product['id'])
-                    && (string) $product['id']
-                        === $productCode
-                ) {
+                if ($product['id'] === $productCode) {
                     $selectedProduct = $product;
 
                     break;
@@ -327,7 +340,7 @@ class Home
                 $productCode,
                 $quantity,
                 null,
-                (bool) ($selectedProduct['pre_order'] ?? false),
+                $selectedProduct['pre_order'],
                 $barem
             );
 
@@ -360,15 +373,23 @@ class Home
                     $lang,
                     $exception->getTranslationKey(),
                     $exception->getParameters()
-                    ),
+                ),
             ];
         } catch (RuntimeException $exception) {
             /*
-             * API / network / configuration gibi teknik hatalar.
-             *
-             * Finalde gerçek hata log'a yazılacak,
-             * kullanıcıya yalnızca genel mesaj gösterilecek.
+             * Teknik hata detaylarını logluyoruz.
+             * Kullanıcıya yalnızca anlaşılır ve genel bir hata mesajı gösteriyoruz.
              */
+            LoggerFactory::create()->error(
+                'Turkpin order operation failed.',
+                [
+                    'exception_class' => $exception::class,
+                    'message' => $exception->getMessage(),
+                    'game_code' => $gameCode,
+                    'product_code' => $productCode,
+                ]
+            );
+
             $_SESSION['order_flash'] = [
                 'success' => false,
                 'message' => $lang['order_service_unavailable'],
@@ -379,6 +400,10 @@ class Home
             $gameCode
         );
     }
+    /**
+     * @param array<string, string> $translations
+     * @param array<string, int|string> $parameters
+     */
 
     private function translate(
         array $translations,
@@ -386,7 +411,7 @@ class Home
         array $parameters = []
     ): string {
         $message = $translations[$key] ?? $key;
-    
+
         foreach ($parameters as $name => $value) {
             $message = str_replace(
                 '{' . $name . '}',
@@ -394,10 +419,10 @@ class Home
                 $message
             );
         }
-    
+
         return $message;
     }
-    
+
     private function redirectToGame(
         string $gameCode
     ): never {
