@@ -2,11 +2,19 @@
 
 declare(strict_types=1);
 
+use Turkpin\InterviewTest\Logging\LoggerFactory;
+use Turkpin\InterviewTest\Security\OrderSubmissionTokenManager;
+use Turkpin\InterviewTest\Services\OrderService;
+use Turkpin\InterviewTest\Services\TurkpinApiClient;
+use Turkpin\InterviewTest\Validation\OrderValidator;
+
 require_once __DIR__ . '/Home.php';
 
 class Main
 {
     public \Bramus\Router\Router $router;
+
+    private Home $home;
 
     public function __construct()
     {
@@ -103,6 +111,25 @@ class Main
                 'en' => 'English',
             ]
         );
+
+        /*
+         * Uygulamanın concrete bağımlılıklarını tek noktada oluşturuyoruz.
+         * Controller bu nesnelerin nasıl üretildiğini bilmez.
+         */
+        $apiClient =
+            TurkpinApiClient::fromEnvironment();
+
+        $orderService = new OrderService(
+            $apiClient,
+            new OrderValidator()
+        );
+
+        $this->home = new Home(
+            $apiClient,
+            $orderService,
+            new OrderSubmissionTokenManager(),
+            LoggerFactory::create()
+        );
     }
 
     public function run(): void
@@ -116,9 +143,7 @@ class Main
         $this->router->get(
             '/',
             function () {
-                $home = new Home();
-
-                $home->index();
+                $this->home->index();
             }
         );
 
@@ -129,9 +154,7 @@ class Main
         $this->router->post(
             '/order',
             function () {
-                $home = new Home();
-
-                $home->order();
+                $this->home->order();
             }
         );
 

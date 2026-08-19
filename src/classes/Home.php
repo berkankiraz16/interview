@@ -2,14 +2,22 @@
 
 declare(strict_types=1);
 
+use Psr\Log\LoggerInterface;
+use Turkpin\InterviewTest\Contracts\TurkpinApiGateway;
 use Turkpin\InterviewTest\Exceptions\OrderValidationException;
 use Turkpin\InterviewTest\Security\OrderSubmissionTokenManager;
-use Turkpin\InterviewTest\Services\TurkpinApiClient;
-use Turkpin\InterviewTest\Validation\OrderValidator;
-use Turkpin\InterviewTest\Logging\LoggerFactory;
+use Turkpin\InterviewTest\Services\OrderService;
 
 class Home
 {
+    public function __construct(
+        private readonly TurkpinApiGateway $apiClient,
+        private readonly OrderService $orderService,
+        private readonly OrderSubmissionTokenManager $tokenManager,
+        private readonly LoggerInterface $logger
+    ) {
+    }
+
     public function index(): void
     {
         /**
@@ -34,8 +42,8 @@ class Home
          * Her görüntülenen sipariş formu için tahmin edilemez,
          * tek kullanımlık bir token oluşturuyoruz.
          */
-        $tokenManager = new OrderSubmissionTokenManager();
-        $orderToken = $tokenManager->issue();
+
+        $orderToken = $this->tokenManager->issue();
 
         /*
          * URL örneği:
@@ -52,12 +60,10 @@ class Home
         $selectedGame = trim($selectedGame);
 
         try {
-            $apiClient = TurkpinApiClient::fromEnvironment();
-
             /*
              * Önce geçerli oyun listesini Turkpin'den alıyoruz.
              */
-            $games = $apiClient->getGames();
+            $games = $this->apiClient->getGames();
 
             if ($selectedGame !== '') {
                 /*
@@ -85,7 +91,7 @@ class Home
                  * Oyun gerçekten mevcutsa yalnızca o oyunun
                  * ürünlerini getiriyoruz.
                  */
-                $products = $apiClient->getProducts(
+                $products = $this->apiClient->getProducts(
                     $selectedGame
                 );
             }
@@ -100,7 +106,7 @@ class Home
              * Teknik hata detaylarını logluyoruz.
              * Kullanıcıya yalnızca anlaşılır ve genel bir hata mesajı gösteriyoruz.
              */
-            LoggerFactory::create()->error(
+            $this->logger->error(
                 'Failed to load Turkpin catalog.',
                 [
                     'exception_class' => $exception::class,
@@ -209,10 +215,7 @@ class Home
          * Aynı formun ikinci kez kullanılmasını engellemek için
          * token, API'de herhangi bir side-effect oluşmadan önce tüketiliyor.
          */
-        $tokenManager =
-            new OrderSubmissionTokenManager();
-
-        if (!$tokenManager->consume($orderToken)) {
+        if (!$this->tokenManager->consume($orderToken)) {
             $_SESSION['order_flash'] = [
                 'success' => false,
                 'message' => $lang['order_form_expired'],
@@ -250,104 +253,18 @@ class Home
         }
 
         try {
-            $apiClient =
-                TurkpinApiClient::fromEnvironment();
-
             /*
-             * Kullanıcıdan gelen game_code değerine güvenmiyoruz.
-             * Gerçek oyun listesini API'den tekrar alıyoruz.
+             * Game/product doğrulaması, iş kuralları ve API order çağrısı
+             * HTTP controller'dan bağımsız OrderService tarafından
+             * yönetiliyor.
              */
-            $games = $apiClient->getGames();
-
-            $validGameCodes = array_column(
-                $games,
-                'id'
-            );
-
-            if (
-                $gameCode === ''
-                || !in_array(
-                    $gameCode,
-                    $validGameCodes,
-                    true
-                )
-            ) {
-                throw new OrderValidationException(
-                    'invalid_game_selection'
-                );
-            }
-
-            /*
-             * product_code değerinin gerçekten seçilen
-             * oyuna ait olduğunu API'den doğruluyoruz.
-             */
-            $products = $apiClient->getProducts(
-                $gameCode
-            );
-
-            $selectedProduct = null;
-
-            foreach ($products as $product) {
-                if ($product['id'] === $productCode) {
-                    $selectedProduct = $product;
-
-                    break;
-                }
-            }
-
-            if ($selectedProduct === null) {
-                throw new OrderValidationException(
-                    'invalid_product_selection'
-                );
-            }
-
-            /*
-             * Minimum / maksimum sipariş,
-             * stok, pre-order ve barem kuralları
-             * ayrı validator içerisinde kontrol ediliyor.
-             */
-            $validator = new OrderValidator();
-
-            $validator->validate(
-                $selectedProduct,
-                $quantity,
-                $barem
-            );
-
-            /*
-             * Tüm server-side kontroller başarılı.
-             *
-             * Development ortamında canlı sipariş kapalıysa
-             * Turkpin'e write request göndermiyoruz.
-             */
-            if (!$apiClient->isOrderSubmissionEnabled()) {
-                $_SESSION['order_flash'] = [
-                    'success' => false,
-                    'message' => $lang['order_submission_disabled'],
-                ];
-
-                $this->redirectToGame(
-                    $gameCode
-                );
-            }
-
-            /*
-             * pre_order değerini kullanıcıdan almıyoruz.
-             * Turkpin'den yeniden doğrulanmış ürün bilgisini kullanıyoruz.
-             */
-            $orderResult = $apiClient->createOrder(
+            $orderResult = $this->orderService->submit(
                 $gameCode,
                 $productCode,
                 $quantity,
-                null,
-                $selectedProduct['pre_order'],
                 $barem
             );
 
-            /*
-             * External API response'unu doğrudan template'e taşımıyoruz.
-             * API client'ın normalize ettiği sonucu kullanıyoruz.
-             */
             $_SESSION['order_flash'] = [
                 'success' => true,
                 'message' => $lang['order_created'],
@@ -378,9 +295,9 @@ class Home
         } catch (RuntimeException $exception) {
             /*
              * Teknik hata detaylarını logluyoruz.
-             * Kullanıcıya yalnızca anlaşılır ve genel bir hata mesajı gösteriyoruz.
+             * Kullanıcıya yalnızca genel bir hata mesajı gösteriyoruz.
              */
-            LoggerFactory::create()->error(
+            $this->logger->error(
                 'Turkpin order operation failed.',
                 [
                     'exception_class' => $exception::class,

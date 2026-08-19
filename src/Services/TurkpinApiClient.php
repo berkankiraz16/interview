@@ -6,6 +6,7 @@ declare(strict_types=1);
 namespace Turkpin\InterviewTest\Services;
 
 use RuntimeException;
+use Turkpin\InterviewTest\Contracts\TurkpinApiGateway;
 
 // Bu servis için kalıtıma ihtiyaç olmadığı için sınıfın miras alınmasını engelliyoruz.
 /**
@@ -13,7 +14,7 @@ use RuntimeException;
  * @phpstan-import-type ProductData from TurkpinResponseParser
  * @phpstan-import-type OrderResult from TurkpinResponseParser
  */
-final class TurkpinApiClient
+final class TurkpinApiClient implements TurkpinApiGateway
 {
     private const CONNECT_TIMEOUT_SECONDS = 5;
     private const REQUEST_TIMEOUT_SECONDS = 15;
