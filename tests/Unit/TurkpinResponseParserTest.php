@@ -319,6 +319,99 @@ XML;
         );
     }
 
+    public function testParseProductListRejectsInvalidMaxOrder(): void
+    {
+        $response = <<<'XML'
+    <APIResponse>
+        <params>
+            <error>000</error>
+            <error_desc>Islem Basarili</error_desc>
+            <epinUrunListesi>
+                <urun>
+                    <id>1</id>
+                    <name>Product</name>
+                    <stock>10</stock>
+                    <min_order>1</min_order>
+                    <max_order>abc</max_order>
+                    <price>0.001</price>
+                    <tax_type>1</tax_type>
+                    <pre_order>false</pre_order>
+                </urun>
+            </epinUrunListesi>
+        </params>
+    </APIResponse>
+    XML;
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Turkpin product response contains invalid max order.'
+        );
+
+        $this->parser->parseProductList($response);
+    }
+
+    public function testParseProductListRejectsInvalidStock(): void
+    {
+        $response = <<<'XML'
+    <APIResponse>
+        <params>
+            <error>000</error>
+            <error_desc>Islem Basarili</error_desc>
+            <epinUrunListesi>
+                <urun>
+                    <id>1</id>
+                    <name>Product</name>
+                    <stock>abc</stock>
+                    <min_order>1</min_order>
+                    <max_order>5</max_order>
+                    <price>0.001</price>
+                    <tax_type>1</tax_type>
+                    <pre_order>false</pre_order>
+                </urun>
+            </epinUrunListesi>
+        </params>
+    </APIResponse>
+    XML;
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Turkpin product response contains invalid stock.'
+        );
+
+        $this->parser->parseProductList($response);
+    }
+
+    public function testParseProductListRejectsInvalidMinimumOrder(): void
+    {
+        $response = <<<'XML'
+    <APIResponse>
+        <params>
+            <error>000</error>
+            <error_desc>Islem Basarili</error_desc>
+            <epinUrunListesi>
+                <urun>
+                    <id>1</id>
+                    <name>Product</name>
+                    <stock>10</stock>
+                    <min_order>abc</min_order>
+                    <max_order>5</max_order>
+                    <price>0.001</price>
+                    <tax_type>1</tax_type>
+                    <pre_order>false</pre_order>
+                </urun>
+            </epinUrunListesi>
+        </params>
+    </APIResponse>
+    XML;
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Turkpin product response contains invalid minimum order.'
+        );
+
+        $this->parser->parseProductList($response);
+    }
+
     /*
      * Parser'ın mevcut sözleşmesinde API min_order=0 veya negatif bir
      * değer döndürürse uygulama tarafında minimum 1'e normalize edilir.

@@ -230,9 +230,82 @@ final class TurkpinResponseParser
                     continue;
                 }
 
+                $stockRaw = trim(
+                    (string) $product->stock
+                );
+
+                $stock = filter_var(
+                    $stockRaw,
+                    FILTER_VALIDATE_INT,
+                    [
+                        'options' => [
+                            'min_range' => 0,
+                        ],
+                    ]
+                );
+
+                if ($stock === false) {
+                    throw new RuntimeException(
+                        'Turkpin product response contains invalid stock.'
+                    );
+                }
+
+                /*
+                 * min_order gerçekten integer mı kontrol ediyoruz.
+                 * "abc" gibi bozuk API verilerini sessizce 1'e çevirmiyoruz.
+                 */
+                $minOrderRaw = trim(
+                    (string) $product->min_order
+                );
+
+                $minOrder = filter_var(
+                    $minOrderRaw,
+                    FILTER_VALIDATE_INT
+                );
+
+                if ($minOrder === false) {
+                    throw new RuntimeException(
+                        'Turkpin product response contains invalid minimum order.'
+                    );
+                }
+
+                /*
+                 * API 0 veya negatif minimum döndürürse mevcut uygulama
+                 * sözleşmesini koruyarak minimum değeri 1'e çekiyoruz.
+                 */
+                $minOrder = max(
+                    1,
+                    $minOrder
+                );
+
                 $maxOrderRaw = trim(
                     (string) $product->max_order
                 );
+
+                $maxOrder = null;
+
+                if (
+                    $maxOrderRaw !== ''
+                    && $maxOrderRaw !== '0'
+                ) {
+                    $validatedMaxOrder = filter_var(
+                        $maxOrderRaw,
+                        FILTER_VALIDATE_INT,
+                        [
+                            'options' => [
+                                'min_range' => 1,
+                            ],
+                        ]
+                    );
+
+                    if ($validatedMaxOrder === false) {
+                        throw new RuntimeException(
+                            'Turkpin product response contains invalid max order.'
+                        );
+                    }
+
+                    $maxOrder = $validatedMaxOrder;
+                }
 
                 $preOrderRaw = strtolower(
                     trim((string) $product->pre_order)
@@ -243,27 +316,21 @@ final class TurkpinResponseParser
 
                     'name' => $name,
 
-                    'stock' => (int) $product->stock,
+                    'stock' => $stock,
 
                     /*
                     * Sipariş miktarının sıfır veya negatif minimuma
                     * sahip olmaması için en az 1'e normalize ediyoruz.
                     */
-                    'min_order' => max(
-                        1,
-                        (int) $product->min_order
-                    ),
+                    'min_order' => $minOrder,
 
                     /*
                     * Turkpin response'unda boş veya "0" max_order,
                     * üst sipariş limiti bulunmadığı anlamında
                     * uygulamada null olarak temsil edilir.
                     */
-                    'max_order' =>
-                        $maxOrderRaw === ''
-                        || $maxOrderRaw === '0'
-                            ? null
-                            : (int) $maxOrderRaw,
+
+                    'max_order' => $maxOrder,
 
                     /*
                     * Fiyat parasal/decimal bir değer olduğu için
