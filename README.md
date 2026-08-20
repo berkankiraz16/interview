@@ -82,10 +82,6 @@ Test API'sine erişebilmek için API isteklerini göndereceğiniz internet bağl
 
 Whitelist işlemi tamamlandıktan sonra test API'sini kullanabilirsiniz.
 
-## Uygulama ve Geliştirme Notları
-
-Bu repository'de Turkpin Bayi API entegrasyonu mevcut proje yapısı korunarak geliştirilmiştir.
-
 ### Ortam Değişkenleri
 
 Proje kök dizinindeki `.env.example` dosyasını `.env` olarak kopyalayın:
