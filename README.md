@@ -177,6 +177,7 @@ Mevcut doğrulama kapsamı:
 * Docker ortamı: **PHP 8.1.34** üzerinde test, statik analiz ve format kontrolleri başarılıdır.
 * GitHub Actions: `push` ve `pull_request` akışlarında PHP 8.1 kalite kontrolleri çalıştırılmaktadır.
 * Whitelist edilmiş bağlantı üzerinden Turkpin API ile read-only canlı integration doğrulaması yapılmıştır.
+* Turkpin test environment üzerinde kontrollü tek bir write E2E siparişi başarıyla çalıştırılmıştır. Normal ürün için adet 1 siparişinde backend doğrulamaları, `epinSiparisYarat` çağrısı, response parsing, sipariş numarası, tutar ve test E-Pin bilgisinin gösterimi ile POST/Redirect/GET sonrası başarı modalı uçtan uca doğrulanmıştır.
 * Uygulama Docker üzerinden tarayıcıda çalıştırılarak oyun seçimi, canlı ürün kataloğu ve responsive arayüz akışı smoke test ile kontrol edilmiştir.
 
 Canlı katalog verileri uygulamada hard-code edilmez. Test sırasında Turkpin API'deki ürün sayısı ve stok değerlerinin değiştiği gözlemlenmiş, uygulamanın güncel API verisini herhangi bir kod değişikliğine ihtiyaç duymadan doğru şekilde yansıttığı doğrulanmıştır.
@@ -184,7 +185,7 @@ Canlı katalog verileri uygulamada hard-code edilmez. Test sırasında Turkpin A
 ### Bilinen Sınırlamalar
 
 * Tek kullanımlık sipariş tokeni gerçek veya dağıtık idempotency sağlamaz; koruma mevcut PHP session'ı kapsamındaki replay / duplicate-submit senaryolarına yöneliktir.
-* Gerçek Turkpin siparişi oluşturan write E2E testi bilinçli olarak çalıştırılmamıştır. Mevcut canlı integration doğrulaması yalnızca read-only katalog çağrılarını kapsamaktadır.
+* Write E2E doğrulaması yalnızca Turkpin tarafından IP whitelist'ine eklenmiş test environment üzerinde kontrollü sipariş kapsamında sipariş testleri yapılmıştır.
 * Sipariş isteğine otomatik retry uygulanmaz. Timeout veya bağlantı kopması durumunda isteğin Turkpin tarafında işlenip işlenmediği kesin olarak bilinmeyebileceği için otomatik tekrar ikinci sipariş riski oluşturabilir.
 * Session cookie için `Secure` flag'i doğrudan mevcut HTTPS bağlantısına göre belirlenir. Uygulama ileride trusted reverse proxy veya load balancer arkasında çalıştırılırsa proxy-aware HTTPS tespiti ayrıca yapılandırılmalıdır.
 * Dockerfile geliştirme, test ve değerlendirme amacıyla hazırlanmıştır; production container hardening, process manager ve deployment altyapısı bu çalışmanın kapsamı dışındadır.
