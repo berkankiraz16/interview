@@ -165,13 +165,39 @@ docker run --rm \
 
 Integration testleri katalog verilerini okumaya yöneliktir ve canlı sipariş oluşturmaz.
 
+### Doğrulama Durumu
+
+Proje hem geliştirme ortamında hem de desteklenen minimum PHP sürümü olan PHP 8.1 üzerinde doğrulanmıştır.
+
+Mevcut doğrulama kapsamı:
+
+* Normal test paketi: **75 test, 112 assertion**; canlı API erişimi gerektiren **2 integration test varsayılan olarak skip edilir**.
+* PHPStan: **Level 10**, hata bulunmamaktadır.
+* PHP-CS-Fixer: format kontrolü temizdir.
+* Docker ortamı: **PHP 8.1.34** üzerinde test, statik analiz ve format kontrolleri başarılıdır.
+* GitHub Actions: `push` ve `pull_request` akışlarında PHP 8.1 kalite kontrolleri çalıştırılmaktadır.
+* Whitelist edilmiş bağlantı üzerinden Turkpin API ile read-only canlı integration doğrulaması yapılmıştır.
+* Uygulama Docker üzerinden tarayıcıda çalıştırılarak oyun seçimi, canlı ürün kataloğu ve responsive arayüz akışı smoke test ile kontrol edilmiştir.
+
+Canlı katalog verileri uygulamada hard-code edilmez. Test sırasında Turkpin API'deki ürün sayısı ve stok değerlerinin değiştiği gözlemlenmiş, uygulamanın güncel API verisini herhangi bir kod değişikliğine ihtiyaç duymadan doğru şekilde yansıttığı doğrulanmıştır.
+
+### Bilinen Sınırlamalar
+
+* Tek kullanımlık sipariş tokeni gerçek veya dağıtık idempotency sağlamaz; koruma mevcut PHP session'ı kapsamındaki replay / duplicate-submit senaryolarına yöneliktir.
+* Gerçek Turkpin siparişi oluşturan write E2E testi bilinçli olarak çalıştırılmamıştır. Mevcut canlı integration doğrulaması yalnızca read-only katalog çağrılarını kapsamaktadır.
+* Sipariş isteğine otomatik retry uygulanmaz. Timeout veya bağlantı kopması durumunda isteğin Turkpin tarafında işlenip işlenmediği kesin olarak bilinmeyebileceği için otomatik tekrar ikinci sipariş riski oluşturabilir.
+* Session cookie için `Secure` flag'i doğrudan mevcut HTTPS bağlantısına göre belirlenir. Uygulama ileride trusted reverse proxy veya load balancer arkasında çalıştırılırsa proxy-aware HTTPS tespiti ayrıca yapılandırılmalıdır.
+* Dockerfile geliştirme, test ve değerlendirme amacıyla hazırlanmıştır; production container hardening, process manager ve deployment altyapısı bu çalışmanın kapsamı dışındadır.
+
 ### Teknik Kararlar ve Kullanılan Araçlar
 
 API istekleri ile API cevaplarının işlenmesi ayrı sorumluluklarda tutulmuştur. `TurkpinApiClient` HTTP iletişimini gerçekleştirirken, `TurkpinResponseParser` API'den dönen XML cevaplarının doğrulanması ve uygulamanın kullanacağı veri yapısına dönüştürülmesinden sorumludur.
 
 Sipariş sırasında tarayıcıdan gönderilen ürün bilgilerine doğrudan güvenilmez. Seçilen oyun ve ürün bilgileri sipariş oluşturulmadan önce API üzerinden tekrar alınır ve miktar, stok, ön sipariş ve barem kuralları backend tarafında doğrulanır.
 
-Aynı formun yanlışlıkla tekrar gönderilmesini azaltmak için tek kullanımlık sipariş tokeni ve POST/Redirect/GET akışı kullanılmıştır. Frontend tarafında sipariş butonlarının form gönderiminden sonra devre dışı bırakılması ek bir kullanıcı deneyimi önlemidir; asıl kontrol backend tarafındadır.
+Aynı sipariş formunun aynı session içerisinde tekrar gönderilmesini engellemek için server-side tek kullanımlık sipariş tokeni ve POST/Redirect/GET akışı kullanılmıştır. Token, sipariş API çağrısından önce tüketilir; böylece aynı form tokeninin yeniden kullanılması backend tarafında reddedilir. Frontend tarafında sipariş butonlarının form gönderiminden sonra devre dışı bırakılması yalnızca ek bir kullanıcı deneyimi önlemidir; güvenlik kontrolü backend tarafındadır.
+
+Bu mekanizma gerçek veya dağıtık bir idempotency garantisi değildir. Koruma session kapsamlı bir replay / duplicate-submit önlemidir. Farklı session'lardan, cihazlardan veya birden fazla application instance üzerinden aynı mantıksal siparişin gönderilmesini tek başına engellemez. Gerçek idempotency için Turkpin API tarafından desteklenen benzersiz bir idempotency key veya uygulama tarafında paylaşımlı ve kalıcı bir sipariş anahtarı / kayıt mekanizması gerekir.
 
 Sipariş oluşturma isteğinde otomatik retry uygulanmamıştır. İstek Turkpin tarafında işlenmiş ancak cevap alınamamışsa aynı isteğin otomatik tekrar gönderilmesi ikinci bir sipariş oluşturma riski taşıyabilir.
 
